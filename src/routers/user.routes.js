@@ -1,10 +1,23 @@
 import { Router } from "express";
 import { registerUser } from "../controllers/user.controller.js";
+import { upload } from "../middlewares/multer.middleware.js"
 
 
 const router = Router()
 
-router.route("/register").post(registerUser)
+router.route("/register").post(
+    upload.fields([   // ye 1 humne middleware laga di ki jab bi ye vala route call hogha to phele file upload hogi tab uska controller call hoga...!!!
+        {
+            name: "avatar", //front end m bi filed m same name hona chiye jo hum apne backend m declare karenge..!!!
+            maxCount: 1
+        },
+        {
+            name: "coverImage",
+            maxCount: 1
+        }
+    ]),
+    
+    registerUser)
 
 
 export default router
