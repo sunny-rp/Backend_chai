@@ -1,10 +1,6 @@
-import dotenv from 'dotenv';
 import express from 'express';
-import ConnectDB from './db/index.js';
 import { app } from './app.js'
-
-// Load env variables
-dotenv.config({ path: './.env' });
+import ConnectDB from './db/index.js';
 
 const IM_PORT = process.env.PORT || 8000;
 
