@@ -7,12 +7,12 @@ const subscriptionSchema = new mongoose.Schema({
     },
 
     channel:{
-        type: mongoose.Schema.Types.ObjectId, // vo banda jisko subscriber subscribe karega  EX. BB KI VINES
+        type: mongoose.Schema.Types.ObjectId, // vo banda(channel) jisko subscriber subscribe karega  EX. BB KI VINES
         ref:"User",
     }
 },{timestamps: true})
 
 
 
-export const subscription = mongoose.model("subscription",subscriptionSchema)
+export const subscription = mongoose.model("Subscription",subscriptionSchema)
 

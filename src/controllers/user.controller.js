@@ -1,7 +1,7 @@
 import { asyncHandler } from "../utils/asyncHandler.js"
 import { apiError } from "../utils/apiError.js"
 import { User } from "../models/user.model.js"
-import { uploadOnCloudinary } from "../utils/cloudinary.js"
+import { uploadOnCloudinary,deleteFromCloudinary } from "../utils/cloudinary.js"
 import { apiResponse } from "../utils/apiResponse.js"
 import jwt from "jsonwebtoken"
 
@@ -262,7 +262,7 @@ const changeCurrentPassword = asyncHandler(async (req, res) => {
 
 
 const getCurrentUser = asyncHandler(async (req, res) => {
-  return res.status(200).json(200, req.user, "Current User Fetched Successfully")
+  return res.status(200).json(new apiResponse(200, req.user, "Current User Fetched Successfully"))
 })
 
 const updateAccountDetails = asyncHandler(async (req, res) => {
@@ -303,6 +303,13 @@ const updateUserAvatar = asyncHandler(async (req, res) => {
     throw new apiError(400, "Error while uploading on avatar")
   }
 
+    const existingUser = await User.findById(req.user?._id);
+
+  // ✅ Delete old avatar before updating
+  if (existingUser?.avatar) {
+    await deleteFromCloudinary(existingUser.avatar);
+  }
+
 
   const user = await User.findByIdAndUpdate(req.user?._id,
     {
@@ -331,6 +338,12 @@ const updateUserCoverImage = asyncHandler(async (req, res) => {
     throw new apiError(400, "Error while uploading on avatar")
   }
 
+  const existingUser = await User.findById(req.user?._id);
+
+  // ✅ Delete old cover image before updating
+  if (existingUser?.coverImage) {
+    await deleteFromCloudinary(existingUser.coverImage);
+  }
 
   const user = await User.findByIdAndUpdate(req.user?._id,
     {
@@ -346,5 +359,133 @@ const updateUserCoverImage = asyncHandler(async (req, res) => {
 
 })
 
+const getUserChannelProfile = asyncHandler(async(req, res) => {
+    const {username} = req.params
 
-export { registerUser, loginUser, logoutUser, refreshAccessToken, changeCurrentPassword, getCurrentUser, updateAccountDetails, updateUserAvatar,updateUserCoverImage }
+    if (!username?.trim()) {
+        throw new apiError(400, "username is missing")
+    }
+
+    const channel = await User.aggregate([
+        {
+            $match: { // ye dekhega ki jo username aaya hai vo exist karta hai ya nahi
+                username: username?.toLowerCase()
+            }
+        },
+        {
+            $lookup: { // ye subscription model me jake dekhega ki kitne log is channel ko subscribe hai
+                from: "subscriptions",
+                localField: "_id",
+                foreignField: "channel",
+                as: "subscribers"
+            }
+        },
+        {
+            $lookup: { // ye subscription model me jake dekhega ki ye subscriber kon kon se channel ko subscribe hai
+                from: "subscriptions",
+                localField: "_id",
+                foreignField: "subscriber",
+                as: "subscribedTo"
+            }
+        },
+        {
+            $addFields: { // ye wo fields hai jo hume calculate karne hai
+                subscribersCount: {
+                    $size: "$subscribers"
+                },
+                channelsSubscribedToCount: { 
+                    $size: "$subscribedTo"
+                },
+                isSubscribed: {
+                    $cond: {
+                        if: {$in: [req.user?._id, "$subscribers.subscriber"]},
+                        then: true,
+                        else: false
+                    }
+                }
+            }
+        },
+        {
+            $project: { // ye wo fields hai jo hume chahiye response me
+                fullname: 1,
+                username: 1,
+                subscribersCount: 1,
+                channelsSubscribedToCount: 1,
+                isSubscribed: 1,
+                avatar: 1,
+                coverImage: 1,
+                email: 1
+
+            }
+        }
+    ])
+
+    if (!channel?.length) {
+        throw new apiError(404, "channel does not exists")
+    }
+
+    return res
+    .status(200)
+    .json(
+        new apiResponse(200, channel[0], "User channel fetched successfully")
+    )
+})
+
+const getWatchHistory = asyncHandler(async(req, res) => {
+    const user = await User.aggregate([
+        {
+            $match: {
+                _id: new mongoose.Types.ObjectId(req.user._id) // pipeline me humesha _id ko object id me convert karna hota hai
+            }
+        },
+        {
+            $lookup: { // ye dekhega ki user ke watch history me konsa konsa video hai
+                from: "videos",
+                localField: "watchHistory",
+                foreignField: "_id",
+                as: "watchHistory",
+                pipeline: [ // ye nested pipeline humne isliye banayi h ki watch history me jo video milega uske sath uska owner bhi mile
+                            // kyuki owner field bi user model ko refrence kar rahi thi
+                    {
+                        $lookup: { 
+                            from: "users",
+                            localField: "owner",
+                            foreignField: "_id",
+                            as: "owner",
+                            pipeline: [ // ye dekhega ki video jiska hai uska naam kya hai
+                                {
+                                    $project: {
+                                        fullName: 1,
+                                        username: 1,
+                                        avatar: 1
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    {
+                        $addFields:{
+                            owner:{
+                                $first: "$owner"
+                            }
+                        }
+                    }
+                ]
+            }
+        }
+    ])
+
+    return res
+    .status(200)
+    .json(
+        new apiResponse(
+            200,
+            user[0].watchHistory,
+            "Watch history fetched successfully"
+        )
+    )
+})
+
+
+
+export { registerUser, loginUser, logoutUser, refreshAccessToken, changeCurrentPassword, getCurrentUser, updateAccountDetails, updateUserAvatar,updateUserCoverImage ,getUserChannelProfile , getWatchHistory}
